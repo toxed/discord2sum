@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.*.local
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Assets (keep local)
+assets/
+
+# Runtime outputs / privacy
+transcripts/*
+!transcripts/.gitkeep
+*.wav
+*.pcm
+
+# Local scratch
+_local/
+
+# OS/editor
+.DS_Store
+.vscode/

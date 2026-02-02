@@ -1,0 +1,27 @@
+[Unit]
+Description=Discord voice auto-transcribe + Telegram summary
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=REPLACE_ME_USER
+WorkingDirectory=REPLACE_ME_WORKDIR
+EnvironmentFile=REPLACE_ME_WORKDIR/.env
+ExecStart=/usr/bin/npm start --silent
+Restart=always
+RestartSec=3
+
+# Hardening (light)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=discord-voice-minutes
+
+[Install]
+WantedBy=multi-user.target

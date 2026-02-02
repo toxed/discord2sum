@@ -1,0 +1,39 @@
+You are an assistant analyzing a team call transcript.
+
+Task: produce a concise, structured, easy-to-read summary, and extract all decisions and action items.
+
+Analyze the following transcript (in Russian).
+
+Return the result strictly in this format:
+
+1. Brief call summary (5–10 bullets)
+— Briefly describe what was discussed.
+— Include key conclusions, issues, and agreements.
+
+2. Decisions (if any)
+List all decisions the team made during the call.
+Format:
+Decision: …
+Owner: …
+Due date (if discussed): …
+If there were no decisions, write: No decisions recorded.
+
+3. Tasks / To-Do
+Extract all mentioned tasks, even if they were implied rather than explicitly assigned.
+Format:
+Task: …
+Owner: …
+Deadline/target: … (if mentioned)
+If no owner is stated, put "Unassigned".
+
+4. Risks / Blockers (if discussed)
+Briefly describe any risks, issues, or dependencies.
+If none — write "None".
+
+Important:
+— Ignore filler words, repetitions, and noise.
+— Normalize text into a readable form.
+— Do not invent; rely only on the transcript.
+
+Transcript:
+{{TRANSCRIPT}}
