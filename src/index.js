@@ -115,6 +115,7 @@ let active = {
   finishing: false,
   recordingUsers: new Set(),
   pending: [],
+  pendingMeta: [],
   nonEmptySince: null,
   candidateChannelId: null,
   introPlayed: false,
@@ -393,6 +394,7 @@ async function ensureJoined(voiceChannel) {
     active.finishing = false;
     active.recordingUsers = new Set();
     active.pending = [];
+    active.pendingMeta = [];
     active.nonEmptySince = null;
     active.candidateChannelId = null;
     active.introPlayed = false;
@@ -450,6 +452,15 @@ async function ensureJoined(voiceChannel) {
         minSegmentSeconds: MIN_SEGMENT_SECONDS,
         logger,
       });
+
+      const meta = {
+        userId,
+        user: sanitizeLabel(member.displayName, { maxLen: 64 }) || `user:${userId}`,
+        startedAtMs: Date.now(),
+        done: false,
+        doneAtMs: null,
+      };
+      active.pendingMeta.push(meta);
 
       const job = done
         .then(async ({ segmentPath: pcmPath, seconds }) => {
@@ -528,6 +539,8 @@ async function ensureJoined(voiceChannel) {
           logger.warn('record pipeline failed', userId, e?.message || e);
         })
         .finally(() => {
+          meta.done = true;
+          meta.doneAtMs = Date.now();
           active.recordingUsers.delete(userId);
         });
 
@@ -620,13 +633,29 @@ function summarizeToBullets(raw, { min = 5, max = 10 } = {}) {
 }
 
 async function finalizeAndSend(guild) {
-  // wait a bit for last audio segments to flush
+  // Wait for last audio segments to flush (prefer reliability over speed).
+  const pendingAtStart = active.pendingMeta?.filter((p) => !p.done).length || 0;
+  const waitStartMs = Date.now();
+  const FINALIZE_WAIT_MS = 30_000;
+  let waitTimedOut = false;
   try {
     await Promise.race([
       Promise.allSettled(active.pending),
-      new Promise((r) => setTimeout(r, 10_000)),
+      new Promise((r) => setTimeout(r, FINALIZE_WAIT_MS)),
     ]);
-  } catch {}
+    waitTimedOut = (Date.now() - waitStartMs) >= (FINALIZE_WAIT_MS - 50);
+  } catch {
+    // ignore
+  }
+  const pendingAfterWait = active.pendingMeta?.filter((p) => !p.done).length || 0;
+  if (pendingAtStart > 0) {
+    logger.info('Finalize wait', {
+      pendingAtStart,
+      pendingAfterWait,
+      waitedMs: Date.now() - waitStartMs,
+      timedOut: waitTimedOut,
+    });
+  }
 
   const vc = guild.channels.cache.get(active.voiceChannelId);
   const channelName = vc?.name || '(unknown)';
@@ -649,6 +678,10 @@ async function finalizeAndSend(guild) {
     endedAt: endedAtIso,
     participants: active.participants?.size || 0,
     metrics: { ...(active.metrics || {}) },
+    pendingAtFinalizeStart: pendingAtStart,
+    pendingAfterWait,
+    finalizeWaitMs: Date.now() - waitStartMs,
+    finalizeWaitTimedOut: waitTimedOut,
   };
   // Persist transcript to disk
   try {
@@ -944,6 +977,7 @@ client.on('interactionCreate', async (interaction) => {
         `participants: ${active.participants.size}\n` +
         `segments_total: ${active.transcripts.length}\n` +
         `pending_jobs: ${active.pending.length}\n` +
+        `pending_not_done: ${active.pendingMeta?.filter((p) => !p.done).length || 0}\n` +
         `\n` +
         `Metrics (active)\n` +
         `lastSpeechAt: ${m.lastSpeechAt || '(none)'}\n` +
@@ -970,6 +1004,10 @@ client.on('interactionCreate', async (interaction) => {
         `started: ${last.call?.startedAt || '(none)'}\n` +
         `ended: ${last.call?.endedAt || '(none)'}\n` +
         `participants: ${last.call?.participants ?? 0}\n` +
+        `pendingAtFinalizeStart: ${last.call?.pendingAtFinalizeStart ?? 0}\n` +
+        `pendingAfterWait: ${last.call?.pendingAfterWait ?? 0}\n` +
+        `finalizeWaitMs: ${last.call?.finalizeWaitMs ?? 0}\n` +
+        `finalizeWaitTimedOut: ${last.call?.finalizeWaitTimedOut ?? false}\n` +
         `segmentsOk: ${last.call?.metrics?.segmentsOk ?? 0}\n` +
         `segmentsEmpty: ${last.call?.metrics?.segmentsEmpty ?? 0}\n` +
         `segmentsTotal: ${last.call?.metrics?.segmentsTotal ?? 0}\n` +
