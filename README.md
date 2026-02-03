@@ -149,7 +149,7 @@ Replace placeholders (`REPLACE_ME_*`) and install it as a normal systemd unit.
 ### STT: "No STT configured" / no transcript text
 
 - Configure exactly one:
-  - `PY_STT_CMD=python3 ./scripts/transcribe_faster_whisper.py ...`, or
+  - `PY_STT_CMD=./.venv/bin/python ./scripts/transcribe_faster_whisper.py ...` (recommended), or
   - `WHISPER_CPP_BIN` + `WHISPER_CPP_MODEL`
 - For `PY_STT_CMD`, only `python/python3` is allowed and the script must be `./scripts/transcribe_faster_whisper.py`.
 

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { parse as shellParse } from 'shell-quote';
@@ -54,11 +54,18 @@ function parsePyCmd(cmdline) {
   const args = parts.slice(1);
 
   // Max-safety allowlist:
-  // 1) Only allow python executables
+  // 1) Only allow python executables, either from PATH (python/python3)
+  //    or the project's venv (./.venv/bin/python).
   const base = basename(cmd);
-  const isPython = /^python(\d+(\.\d+)?)?$/.test(base);
-  if (!isPython) {
-    throw new Error(`PY_STT_CMD command must be python (got: ${cmd})`);
+  const isPythonName = /^python(\d+(\.\d+)?)?$/.test(base);
+  const venvPython = resolve(process.cwd(), '.venv', 'bin', 'python');
+  const venvPython3 = resolve(process.cwd(), '.venv', 'bin', 'python3');
+  const resolvedCmd = cmd.includes('/') ? resolve(process.cwd(), cmd) : null;
+  const isAllowedPython =
+    isPythonName && (!resolvedCmd || resolvedCmd === venvPython || resolvedCmd === venvPython3);
+
+  if (!isAllowedPython) {
+    throw new Error(`PY_STT_CMD command must be python/python3 or ./.venv/bin/python (got: ${cmd})`);
   }
 
   // 2) Require our bundled transcriber script as the first positional arg.
@@ -79,6 +86,13 @@ function parsePyCmd(cmdline) {
   const bad = /[;&|<>`$]/;
   if (bad.test(cmdline)) {
     throw new Error('PY_STT_CMD must not contain shell metacharacters');
+  }
+
+  // If a venv path is requested, ensure it exists.
+  if (resolvedCmd && (resolvedCmd === venvPython || resolvedCmd === venvPython3)) {
+    if (!existsSync(resolvedCmd)) {
+      throw new Error(`PY_STT_CMD venv python not found: ${cmd}`);
+    }
   }
 
   return { cmd, args };
