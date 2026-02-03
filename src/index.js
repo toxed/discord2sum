@@ -30,6 +30,7 @@ import { sanitizeLabel } from './security.js';
 import { loadConfigFromEnv, validateConfig } from './config.js';
 import { pruneOldFiles } from './retention.js';
 import { sendWebhook } from './webhook.js';
+import { runSttSelfTest } from './selftest.js';
 
 const logger = makeLogger(process.env.LOG_LEVEL || 'info');
 
@@ -66,6 +67,21 @@ const TRANSCRIPTS_MAX_AGE_DAYS = CFG.TRANSCRIPTS_MAX_AGE_DAYS;
 const WEBHOOK_URL = CFG.WEBHOOK_URL;
 const WEBHOOK_TIMEOUT_MS = CFG.WEBHOOK_TIMEOUT_MS;
 
+const STT_SELFTEST = CFG.STT_SELFTEST;
+const STT_ERROR_NOTIFY = CFG.STT_ERROR_NOTIFY;
+const STT_ERROR_NOTIFY_COOLDOWN_SEC = CFG.STT_ERROR_NOTIFY_COOLDOWN_SEC;
+
+// Optional startup self-test
+if (STT_SELFTEST) {
+  runSttSelfTest({
+    transcribeFile,
+    whisperCppBin: WHISPER_CPP_BIN,
+    whisperCppModel: WHISPER_CPP_MODEL,
+    pyCmdTemplate: PY_STT_CMD,
+    logger,
+  }).catch(() => {});
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -94,6 +110,41 @@ let active = {
 
 let tickInFlight = false;
 let joinTimer = null;
+
+// Rate-limited ops notifications
+let lastSttErrorNotifyAtMs = 0;
+
+function redactErrorMessage(err) {
+  const msg = String(err?.message || err || 'unknown error');
+  return msg
+    .replace(/\s+\/tmp\/[^\s]+/g, ' <tmpfile>')
+    .replaceAll(process.cwd(), '<cwd>')
+    .slice(0, 800);
+}
+
+async function notifySttErrorOnce({ channelName, err }) {
+  if (!STT_ERROR_NOTIFY) return;
+  const now = Date.now();
+  const cooldownMs = (Number(STT_ERROR_NOTIFY_COOLDOWN_SEC) || 0) * 1000;
+  if (cooldownMs > 0 && now - lastSttErrorNotifyAtMs < cooldownMs) return;
+  lastSttErrorNotifyAtMs = now;
+
+  const text =
+    `discord2sum: STT failure\n` +
+    `Channel: ${sanitizeLabel(channelName)}\n` +
+    `Error: ${redactErrorMessage(err)}\n` +
+    `Hint: check PY_STT_CMD / venv and logs.`;
+
+  try {
+    await sendTelegramMessage({
+      token: TELEGRAM_BOT_TOKEN,
+      chatId: TELEGRAM_CHAT_ID,
+      text,
+    });
+  } catch (e) {
+    logger.warn('Failed to send STT alert to Telegram', e?.message || e);
+  }
+}
 
 function getNoticeChannel(guild) {
   if (NOTICE_TEXT_CHANNEL_ID) {
@@ -335,6 +386,7 @@ async function ensureJoined(voiceChannel) {
             }
           } catch (e) {
             logger.warn('STT failed', e?.message || e);
+            await notifySttErrorOnce({ channelName: voiceChannel.name, err: e });
           } finally {
             rmSync(pcmPath, { force: true });
             rmSync(wavPath, { force: true });

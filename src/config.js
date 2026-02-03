@@ -41,6 +41,12 @@ export function loadConfigFromEnv(env = process.env) {
     WEBHOOK_URL: env.WEBHOOK_URL || null,
     WEBHOOK_TIMEOUT_MS: clampNumber('WEBHOOK_TIMEOUT_MS', env.WEBHOOK_TIMEOUT_MS, { min: 1000, max: 120_000, fallback: 15000 }),
 
+    // Alerts / self-check
+    // Default true unless explicitly set to false.
+    STT_SELFTEST: env.STT_SELFTEST == null ? true : isTruthy(env.STT_SELFTEST),
+    STT_ERROR_NOTIFY: env.STT_ERROR_NOTIFY == null ? true : isTruthy(env.STT_ERROR_NOTIFY),
+    STT_ERROR_NOTIFY_COOLDOWN_SEC: clampNumber('STT_ERROR_NOTIFY_COOLDOWN_SEC', env.STT_ERROR_NOTIFY_COOLDOWN_SEC, { min: 0, max: 86_400, fallback: 600 }),
+
     INTRO_OPUS_PATH_RAW: env.INTRO_OPUS_PATH || 'assets/intro.opus',
     TRANSCRIPTS_DIR_RAW: env.TRANSCRIPTS_DIR || 'transcripts',
   };
