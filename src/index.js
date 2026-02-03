@@ -129,11 +129,23 @@ let active = {
   metrics: {
     lastSpeechAt: null,
     lastSttOkAt: null,
+    lastSttEmptyAt: null,
     lastSttFailAt: null,
+    lastNonEmptyTextAt: null,
+
     segmentsOk: 0,
+    segmentsEmpty: 0,
+    segmentsTotal: 0,
+
     sttFailures: 0,
     decodeFailures: 0,
     totalAudioSeconds: 0,
+
+    // Debug (best-effort; local paths)
+    lastSegmentSeconds: null,
+    lastSegmentWav: null,
+    lastSttTextLen: null,
+    lastSttSafeTextLen: null,
   },
 };
 
@@ -142,8 +154,15 @@ let active = {
 const last = {
   finalizeAt: null,
   summarySentAt: null,
+  nonEmptyTextAt: null,
+  sttEmptyAt: null,
   guildId: null,
   voiceChannelId: null,
+  // debug (local)
+  lastSegmentWav: null,
+  lastSegmentSeconds: null,
+  lastSttTextLen: null,
+  lastSttSafeTextLen: null,
 };
 
 let tickInFlight = false;
@@ -372,13 +391,22 @@ async function ensureJoined(voiceChannel) {
     active.metrics = {
       lastSpeechAt: null,
       lastSttOkAt: null,
+      lastSttEmptyAt: null,
       lastSttFailAt: null,
-      lastFinalizeAt: null,
-      lastSummarySentAt: null,
+      lastNonEmptyTextAt: null,
+
       segmentsOk: 0,
+      segmentsEmpty: 0,
+      segmentsTotal: 0,
+
       sttFailures: 0,
       decodeFailures: 0,
       totalAudioSeconds: 0,
+
+      lastSegmentSeconds: null,
+      lastSegmentWav: null,
+      lastSttTextLen: null,
+      lastSttSafeTextLen: null,
     };
 
     const dir = join(tmpdir(), `discord-voice-${Date.now()}`);
@@ -418,16 +446,35 @@ async function ensureJoined(voiceChannel) {
           const wavPath = pcmPath.replace(/\.pcm$/, '.wav');
           try {
             await ffmpegPcmToWav(pcmPath, wavPath);
+
+            // Track last segment details for diagnostics (local only).
+            active.metrics.lastSegmentSeconds = Number(seconds) || 0;
+            active.metrics.lastSegmentWav = wavPath;
+
             const text = await transcribeFile({
               filePath: wavPath,
               whisperCppBin: WHISPER_CPP_BIN,
               whisperCppModel: WHISPER_CPP_MODEL,
               pyCmdTemplate: PY_STT_CMD,
             });
-            if (text) {
-              const safeUser = sanitizeLabel(member.displayName, { maxLen: 64 }) || `user:${userId}`;
-              const safeText = sanitizeLabel(text, { maxLen: MAX_SEGMENT_TEXT_CHARS });
 
+            const rawText = String(text || '');
+            const safeUser = sanitizeLabel(member.displayName, { maxLen: 64 }) || `user:${userId}`;
+            const safeText = sanitizeLabel(rawText, { maxLen: MAX_SEGMENT_TEXT_CHARS });
+
+            // Always count audio time even if STT is empty.
+            active.metrics.totalAudioSeconds += Number(seconds) || 0;
+            active.metrics.segmentsTotal += 1;
+            active.metrics.lastSttTextLen = rawText.length;
+            active.metrics.lastSttSafeTextLen = safeText.length;
+
+            // Mirror last-seen diagnostics across sessions.
+            last.lastSegmentWav = wavPath;
+            last.lastSegmentSeconds = Number(seconds) || 0;
+            last.lastSttTextLen = rawText.length;
+            last.lastSttSafeTextLen = safeText.length;
+
+            if (safeText && safeText.trim().length > 0) {
               active.transcripts.push({
                 at: new Date().toISOString(),
                 user: safeUser,
@@ -437,12 +484,23 @@ async function ensureJoined(voiceChannel) {
 
               active.metrics.segmentsOk += 1;
               active.metrics.lastSttOkAt = new Date().toISOString();
-              active.metrics.totalAudioSeconds += Number(seconds) || 0;
+              active.metrics.lastNonEmptyTextAt = new Date().toISOString();
+              last.nonEmptyTextAt = active.metrics.lastNonEmptyTextAt;
 
               // Safety: prevent unbounded memory growth on long calls.
               if (active.transcripts.length > MAX_TRANSCRIPT_ITEMS) {
                 active.transcripts.splice(0, active.transcripts.length - MAX_TRANSCRIPT_ITEMS);
               }
+            } else {
+              active.metrics.segmentsEmpty += 1;
+              active.metrics.lastSttEmptyAt = new Date().toISOString();
+              last.sttEmptyAt = active.metrics.lastSttEmptyAt;
+              logger.info('STT empty', {
+                user: safeUser,
+                seconds: Number(seconds) || 0,
+                textLen: rawText.length,
+                safeLen: safeText.length,
+              });
             }
           } catch (e) {
             active.metrics.sttFailures += 1;
@@ -838,11 +896,20 @@ client.on('interactionCreate', async (interaction) => {
       const m = active.metrics || {};
       const health = (() => {
         const sttOk = Number(m.segmentsOk || 0);
+        const sttEmpty = Number(m.segmentsEmpty || 0);
+        const sttTotal = Number(m.segmentsTotal || 0);
         const sttFail = Number(m.sttFailures || 0);
         const decFail = Number(m.decodeFailures || 0);
+        const audio = Number(m.totalAudioSeconds || 0);
+
         if (sttFail > 0 && sttOk === 0) return 'BAD (STT failing)';
         if (decFail > 0 && sttOk === 0) return 'BAD (decode failing)';
         if (decFail > 0 || sttFail > 0) return 'WARN';
+
+        // Audio is flowing but recognition is consistently empty.
+        if (audio > 10 && sttOk === 0 && (sttEmpty > 0 || sttTotal > 0)) return 'WARN (no recognized speech)';
+
+        // Still early or just joined.
         if (dur > 180 && sttOk === 0) return 'WARN (no text yet)';
         return 'OK';
       })();
@@ -862,13 +929,23 @@ client.on('interactionCreate', async (interaction) => {
         `Metrics\n` +
         `lastSpeechAt: ${m.lastSpeechAt || '(none)'}\n` +
         `lastSttOkAt: ${m.lastSttOkAt || '(none)'}\n` +
+        `lastSttEmptyAt: ${m.lastSttEmptyAt || '(none)'}\n` +
         `lastSttFailAt: ${m.lastSttFailAt || '(none)'}\n` +
+        `lastNonEmptyTextAt: ${m.lastNonEmptyTextAt || '(none)'}\n` +
         `lastFinalizeAt: ${last.finalizeAt || '(none)'}\n` +
         `lastSummarySentAt: ${last.summarySentAt || '(none)'}\n` +
+        `last.nonEmptyTextAt: ${last.nonEmptyTextAt || '(none)'}\n` +
+        `last.sttEmptyAt: ${last.sttEmptyAt || '(none)'}\n` +
         `segmentsOk: ${m.segmentsOk || 0}\n` +
+        `segmentsEmpty: ${m.segmentsEmpty || 0}\n` +
+        `segmentsTotal: ${m.segmentsTotal || 0}\n` +
         `sttFailures: ${m.sttFailures || 0}\n` +
         `decodeFailures: ${m.decodeFailures || 0}\n` +
-        `totalAudioSeconds: ${Math.round((m.totalAudioSeconds || 0) * 10) / 10}`;
+        `totalAudioSeconds: ${Math.round((m.totalAudioSeconds || 0) * 10) / 10}\n` +
+        `lastSegSeconds: ${m.lastSegmentSeconds ?? '(none)'}\n` +
+        `lastSegWav: ${m.lastSegmentWav ? String(m.lastSegmentWav).split('/').slice(-2).join('/') : '(none)'}\n` +
+        `lastSttTextLen: ${m.lastSttTextLen ?? '(none)'}\n` +
+        `lastSttSafeTextLen: ${m.lastSttSafeTextLen ?? '(none)'}`;
       await interaction.reply({ content: '```\n' + text + '\n```', ephemeral: true });
       return;
     }
@@ -907,13 +984,22 @@ client.on('interactionCreate', async (interaction) => {
       active.metrics = {
         lastSpeechAt: null,
         lastSttOkAt: null,
+        lastSttEmptyAt: null,
         lastSttFailAt: null,
-        lastFinalizeAt: null,
-        lastSummarySentAt: null,
+        lastNonEmptyTextAt: null,
+
         segmentsOk: 0,
+        segmentsEmpty: 0,
+        segmentsTotal: 0,
+
         sttFailures: 0,
         decodeFailures: 0,
         totalAudioSeconds: 0,
+
+        lastSegmentSeconds: null,
+        lastSegmentWav: null,
+        lastSttTextLen: null,
+        lastSttSafeTextLen: null,
       };
 
       await interaction.reply({ content: 'OK. Left voice channel and cleared manual mode.', ephemeral: true });
