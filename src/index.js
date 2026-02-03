@@ -4,6 +4,8 @@ import {
   GatewayIntentBits,
   Partials,
   ChannelType,
+  REST,
+  Routes,
 } from 'discord.js';
 import {
   joinVoiceChannel,
@@ -41,6 +43,7 @@ validateConfig(CFG);
 const DISCORD_TOKEN = CFG.DISCORD_TOKEN;
 const GUILD_ID = CFG.DISCORD_GUILD_ID;
 const NOTICE_TEXT_CHANNEL_ID = CFG.DISCORD_NOTICE_TEXT_CHANNEL_ID;
+let noticeChannelOverrideId = null;
 
 const TELEGRAM_BOT_TOKEN = CFG.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = CFG.TELEGRAM_CHAT_ID;
@@ -115,6 +118,11 @@ let active = {
   candidateChannelId: null,
   introPlayed: false,
   introEligibleAt: null,
+
+  // Manual control
+  manual: false,
+  manualGuildId: null,
+  manualVoiceChannelId: null,
 };
 
 let tickInFlight = false;
@@ -156,8 +164,9 @@ async function notifySttErrorOnce({ channelName, err }) {
 }
 
 function getNoticeChannel(guild) {
-  if (NOTICE_TEXT_CHANNEL_ID) {
-    const ch = guild.channels.cache.get(NOTICE_TEXT_CHANNEL_ID);
+  const id = noticeChannelOverrideId || NOTICE_TEXT_CHANNEL_ID;
+  if (id) {
+    const ch = guild.channels.cache.get(id);
     if (ch && ch.type === ChannelType.GuildText) return ch;
   }
   return guild.systemChannel ?? null;
@@ -635,6 +644,10 @@ async function finalizeAndSend(guild) {
     candidateChannelId: null,
     introPlayed: false,
     introEligibleAt: null,
+
+    manual: false,
+    manualGuildId: null,
+    manualVoiceChannelId: null,
   };
 }
 
@@ -646,9 +659,12 @@ async function tick() {
       if (GUILD_ID && guild.id !== GUILD_ID) continue;
 
       if (!active.voiceChannelId) {
-        const vc = pickChannelToRecord(guild);
-        if (vc && shouldJoinCandidate(guild, vc)) {
-          await ensureJoined(vc).catch((e) => logger.error('Failed to join', e?.message || e));
+        // If manually controlled, do not auto-pick channels.
+        if (!active.manual) {
+          const vc = pickChannelToRecord(guild);
+          if (vc && shouldJoinCandidate(guild, vc)) {
+            await ensureJoined(vc).catch((e) => logger.error('Failed to join', e?.message || e));
+          }
         }
         continue;
       }
@@ -686,11 +702,149 @@ async function tick() {
   }
 }
 
-client.once('clientReady', () => {
+async function registerSlashCommands() {
+  const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+
+  const commands = [
+    {
+      name: 'status',
+      description: 'Show bot status (recording, queue, last call)'
+    },
+    {
+      name: 'join',
+      description: 'Join a specific voice channel (manual mode)',
+      options: [
+        {
+          name: 'channel',
+          description: 'Voice channel to join',
+          type: 7, // ApplicationCommandOptionType.Channel
+          required: true,
+          channel_types: [2], // ChannelType.GuildVoice
+        },
+      ],
+    },
+    {
+      name: 'leave',
+      description: 'Leave voice channel and exit manual mode'
+    },
+    {
+      name: 'set_notice_channel',
+      description: 'Override notice text channel for this process',
+      options: [
+        {
+          name: 'channel',
+          description: 'Text channel for notices',
+          type: 7,
+          required: true,
+          channel_types: [0], // ChannelType.GuildText
+        },
+      ],
+    },
+  ];
+
+  if (GUILD_ID) {
+    await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: commands });
+    logger.info('Slash commands registered (guild)');
+  } else {
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    logger.info('Slash commands registered (global)');
+  }
+}
+
+client.once('clientReady', async () => {
   logger.info('Bot ready as', client.user?.tag);
+  try {
+    await registerSlashCommands();
+  } catch (e) {
+    logger.warn('Failed to register slash commands', e?.message || e);
+  }
+
   setInterval(() => {
     tick().catch((e) => logger.error('tick error', e?.message || e));
   }, 5_000);
+});
+
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  try {
+    if (interaction.commandName === 'status') {
+      const started = active.startedAt ? active.startedAt.toISOString() : '(none)';
+      const dur = active.startedAt ? Math.round((Date.now() - active.startedAt.getTime()) / 1000) : 0;
+      const text =
+        `Status\n` +
+        `manual: ${active.manual}\n` +
+        `guild: ${active.guildId || '(none)'}\n` +
+        `voice: ${active.voiceChannelId || '(none)'}\n` +
+        `started: ${started}\n` +
+        `duration_s: ${dur}\n` +
+        `participants: ${active.participants.size}\n` +
+        `segments: ${active.transcripts.length}\n` +
+        `pending_jobs: ${active.pending.length}`;
+      await interaction.reply({ content: '```\n' + text + '\n```', ephemeral: true });
+      return;
+    }
+
+    if (interaction.commandName === 'set_notice_channel') {
+      const ch = interaction.options.getChannel('channel', true);
+      noticeChannelOverrideId = ch?.id || null;
+      await interaction.reply({ content: `OK. Notice channel override set to <#${noticeChannelOverrideId}>`, ephemeral: true });
+      return;
+    }
+
+    if (interaction.commandName === 'leave') {
+      const gid = interaction.guildId;
+      const conn = gid ? getVoiceConnection(gid) : null;
+      if (conn) {
+        try { conn.destroy(); } catch {}
+      }
+      // reset state
+      active.guildId = null;
+      active.voiceChannelId = null;
+      active.startedAt = null;
+      active.participants = new Map();
+      active.recordingsDir = null;
+      active.transcripts = [];
+      active.pending = [];
+      active.recordingUsers = new Set();
+      active.nonEmptySince = null;
+      active.candidateChannelId = null;
+      active.introPlayed = false;
+      active.introEligibleAt = null;
+      active.finishing = false;
+      active.manual = false;
+      active.manualGuildId = null;
+      active.manualVoiceChannelId = null;
+
+      await interaction.reply({ content: 'OK. Left voice channel and cleared manual mode.', ephemeral: true });
+      return;
+    }
+
+    if (interaction.commandName === 'join') {
+      const ch = interaction.options.getChannel('channel', true);
+      if (!ch || ch.type !== ChannelType.GuildVoice) {
+        await interaction.reply({ content: 'Please pick a voice channel.', ephemeral: true });
+        return;
+      }
+      const vc = ch;
+
+      active.manual = true;
+      active.manualGuildId = vc.guild.id;
+      active.manualVoiceChannelId = vc.id;
+
+      await interaction.reply({ content: `OK. Joining ${vc.name} (manual mode).`, ephemeral: true });
+      await ensureJoined(vc).catch((e) => logger.error('Manual join failed', e?.message || e));
+      return;
+    }
+
+    await interaction.reply({ content: 'Unknown command', ephemeral: true });
+  } catch (e) {
+    try {
+      if (!interaction.replied) {
+        await interaction.reply({ content: `Error: ${e?.message || e}`, ephemeral: true });
+      }
+    } catch {}
+  }
 });
 
 client.on('voiceStateUpdate', () => {
