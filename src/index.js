@@ -123,6 +123,17 @@ let active = {
   manual: false,
   manualGuildId: null,
   manualVoiceChannelId: null,
+
+  // Metrics / health
+  metrics: {
+    lastSpeechAt: null,
+    lastSttOkAt: null,
+    lastSttFailAt: null,
+    segmentsOk: 0,
+    sttFailures: 0,
+    decodeFailures: 0,
+    totalAudioSeconds: 0,
+  },
 };
 
 let tickInFlight = false;
@@ -345,7 +356,18 @@ async function ensureJoined(voiceChannel) {
     active.nonEmptySince = null;
     active.candidateChannelId = null;
     active.introPlayed = false;
-  active.introEligibleAt = null;
+    active.introEligibleAt = null;
+
+    // reset metrics for new call
+    active.metrics = {
+      lastSpeechAt: null,
+      lastSttOkAt: null,
+      lastSttFailAt: null,
+      segmentsOk: 0,
+      sttFailures: 0,
+      decodeFailures: 0,
+      totalAudioSeconds: 0,
+    };
 
     const dir = join(tmpdir(), `discord-voice-${Date.now()}`);
     mkdirSync(dir, { recursive: true });
@@ -367,6 +389,8 @@ async function ensureJoined(voiceChannel) {
 
       active.recordingUsers.add(userId);
       active.participants.set(userId, member.displayName);
+
+      active.metrics.lastSpeechAt = new Date().toISOString();
 
       const { done } = startUserRecording({
         receiver,
@@ -399,12 +423,18 @@ async function ensureJoined(voiceChannel) {
                 text: safeText,
               });
 
+              active.metrics.segmentsOk += 1;
+              active.metrics.lastSttOkAt = new Date().toISOString();
+              active.metrics.totalAudioSeconds += Number(seconds) || 0;
+
               // Safety: prevent unbounded memory growth on long calls.
               if (active.transcripts.length > MAX_TRANSCRIPT_ITEMS) {
                 active.transcripts.splice(0, active.transcripts.length - MAX_TRANSCRIPT_ITEMS);
               }
             }
           } catch (e) {
+            active.metrics.sttFailures += 1;
+            active.metrics.lastSttFailAt = new Date().toISOString();
             logger.warn('STT failed', e?.message || e);
             await notifySttErrorOnce({ channelName: voiceChannel.name, err: e });
           } finally {
@@ -412,7 +442,10 @@ async function ensureJoined(voiceChannel) {
             rmSync(wavPath, { force: true });
           }
         })
-        .catch((e) => logger.warn('record pipeline failed', userId, e?.message || e))
+        .catch((e) => {
+          active.metrics.decodeFailures += 1;
+          logger.warn('record pipeline failed', userId, e?.message || e);
+        })
         .finally(() => {
           active.recordingUsers.delete(userId);
         });
@@ -648,6 +681,16 @@ async function finalizeAndSend(guild) {
     manual: false,
     manualGuildId: null,
     manualVoiceChannelId: null,
+
+    metrics: {
+      lastSpeechAt: null,
+      lastSttOkAt: null,
+      lastSttFailAt: null,
+      segmentsOk: 0,
+      sttFailures: 0,
+      decodeFailures: 0,
+      totalAudioSeconds: 0,
+    },
   };
 }
 
@@ -771,6 +814,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.commandName === 'status') {
       const started = active.startedAt ? active.startedAt.toISOString() : '(none)';
       const dur = active.startedAt ? Math.round((Date.now() - active.startedAt.getTime()) / 1000) : 0;
+      const m = active.metrics || {};
       const text =
         `Status\n` +
         `manual: ${active.manual}\n` +
@@ -779,8 +823,17 @@ client.on('interactionCreate', async (interaction) => {
         `started: ${started}\n` +
         `duration_s: ${dur}\n` +
         `participants: ${active.participants.size}\n` +
-        `segments: ${active.transcripts.length}\n` +
-        `pending_jobs: ${active.pending.length}`;
+        `segments_total: ${active.transcripts.length}\n` +
+        `pending_jobs: ${active.pending.length}\n` +
+        `\n` +
+        `Metrics\n` +
+        `lastSpeechAt: ${m.lastSpeechAt || '(none)'}\n` +
+        `lastSttOkAt: ${m.lastSttOkAt || '(none)'}\n` +
+        `lastSttFailAt: ${m.lastSttFailAt || '(none)'}\n` +
+        `segmentsOk: ${m.segmentsOk || 0}\n` +
+        `sttFailures: ${m.sttFailures || 0}\n` +
+        `decodeFailures: ${m.decodeFailures || 0}\n` +
+        `totalAudioSeconds: ${Math.round((m.totalAudioSeconds || 0) * 10) / 10}`;
       await interaction.reply({ content: '```\n' + text + '\n```', ephemeral: true });
       return;
     }
@@ -815,6 +868,16 @@ client.on('interactionCreate', async (interaction) => {
       active.manual = false;
       active.manualGuildId = null;
       active.manualVoiceChannelId = null;
+
+      active.metrics = {
+        lastSpeechAt: null,
+        lastSttOkAt: null,
+        lastSttFailAt: null,
+        segmentsOk: 0,
+        sttFailures: 0,
+        decodeFailures: 0,
+        totalAudioSeconds: 0,
+      };
 
       await interaction.reply({ content: 'OK. Left voice channel and cleared manual mode.', ephemeral: true });
       return;
