@@ -23,20 +23,11 @@ export async function summarizeTranscriptWithLLM({ transcript }) {
   }
 
   // Prompt selection:
-  // 1) SUMMARY_PROMPT (preferred): a file name inside ./prompts (e.g. "summary_ru.txt")
-  // 2) MEETING_MODE (legacy shortcut): maps to a preset file
-  // 3) fallback: prompts/summary_ru.txt
+  // SUMMARY_PROMPT: a file name inside ./prompts (e.g. "summary_ru.txt").
+  // Fallback: summary_ru.txt
 
   const summaryPromptName = String(process.env.SUMMARY_PROMPT || '').trim();
-
-  // Optional: meeting mode can swap prompt template (legacy shortcut)
-  const mode = String(process.env.MEETING_MODE || '').toLowerCase().trim();
-  const modeToPromptName = {
-    standup: 'standup_ru.txt',
-    incident: 'incident_ru.txt',
-  };
-
-  const chosenName = summaryPromptName || modeToPromptName[mode] || 'summary_ru.txt';
+  const chosenName = summaryPromptName || 'summary_ru.txt';
 
   // Security: only allow simple filenames; force prompts/ prefix.
   if (!/^[a-zA-Z0-9._-]+$/.test(chosenName)) {

@@ -22,11 +22,7 @@ export function loadConfigFromEnv(env = process.env) {
     WHISPER_CPP_MODEL: env.WHISPER_CPP_MODEL || null,
     PY_STT_CMD: env.PY_STT_CMD || null,
 
-    // Deprecated: SUMMARY_PROMPT_LANG used to pick ru/en templates.
-    // Kept for backward compatibility, but prompt selection should use SUMMARY_PROMPT.
-    SUMMARY_PROMPT_LANG: env.SUMMARY_PROMPT_LANG || 'ru',
-
-    // Preferred: choose exact prompt file under ./prompts (e.g. "summary_ru.txt")
+    // Choose exact prompt file under ./prompts (e.g. "summary_ru.txt")
     SUMMARY_PROMPT: env.SUMMARY_PROMPT || null,
 
     OPENAI_API_KEY: env.OPENAI_API_KEY || null,
