@@ -859,7 +859,8 @@ async function tick() {
         logger.info('Voice channel empty; finalizing', active.voiceChannelId);
 
         // grace period so last speech segments can end cleanly
-        await new Promise((r) => setTimeout(r, 1500));
+        const FINALIZE_GRACE_MS = 2000;
+        await new Promise((r) => setTimeout(r, FINALIZE_GRACE_MS));
 
         await finalizeAndSend(guild).catch((e) => logger.error('Finalize failed', e?.message || e));
 
