@@ -2,11 +2,11 @@
 
 `discord2sum` is a small Discord bot that:
 
-- Watches voice channels in a guild
+- Watches voice activity in a guild and joins the active voice channel
 - Auto-joins when people start talking
 - Records short speech segments per speaker (locally, in chunks)
 - Runs **local STT** (whisper.cpp or faster-whisper)
-- When the voice channel becomes empty, sends a **structured summary** to Telegram
+- When the voice channel becomes empty, sends a **structured summary** to Telegram (optionally also to Slack and/or a generic webhook)
 
 ## Privacy / Safety
 
@@ -113,9 +113,10 @@ OpenAI:
 - `OPENAI_MODEL` (default: `gpt-4o-mini`)
 - `OPENAI_HTTP_TIMEOUT_MS`
 
-Local/remote HTTP LLM (e.g. on another VM):
+Local/remote HTTP LLM (e.g. on another VM / Ollama):
 - `LLM_PROVIDER=http`
 - `LLM_HTTP_URL` — endpoint that accepts `{prompt, model?}` and returns `{text}`
+  - Ollama example: `http://localhost:11434/api/generate` (the bot will send `stream: false` and read `.response`)
 - `LLM_MODEL` (optional)
 - `LLM_HTTP_TIMEOUT_MS`
 
