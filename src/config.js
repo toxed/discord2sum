@@ -52,6 +52,7 @@ export function loadConfigFromEnv(env = process.env) {
     SLACK_USERNAME: env.SLACK_USERNAME || null,
     SLACK_ICON_EMOJI: env.SLACK_ICON_EMOJI || null,
     SLACK_TIMEOUT_MS: clampNumber('SLACK_TIMEOUT_MS', env.SLACK_TIMEOUT_MS, { min: 1000, max: 120_000, fallback: 15000 }),
+    SLACK_MAX_CHARS: clampNumber('SLACK_MAX_CHARS', env.SLACK_MAX_CHARS, { min: 1000, max: 100_000, fallback: 35000 }),
 
     // Alerts / self-check
     // Default true unless explicitly set to false.

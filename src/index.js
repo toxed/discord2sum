@@ -75,6 +75,7 @@ const SLACK_CHANNEL = CFG.SLACK_CHANNEL;
 const SLACK_USERNAME = CFG.SLACK_USERNAME;
 const SLACK_ICON_EMOJI = CFG.SLACK_ICON_EMOJI;
 const SLACK_TIMEOUT_MS = CFG.SLACK_TIMEOUT_MS;
+const SLACK_MAX_CHARS = CFG.SLACK_MAX_CHARS;
 
 const STT_SELFTEST = CFG.STT_SELFTEST;
 const STT_ERROR_NOTIFY = CFG.STT_ERROR_NOTIFY;
@@ -591,6 +592,7 @@ async function finalizeAndSend(guild) {
           username: SLACK_USERNAME,
           iconEmoji: SLACK_ICON_EMOJI,
           timeoutMs: SLACK_TIMEOUT_MS,
+          maxChars: SLACK_MAX_CHARS,
           text: msg,
         });
       } catch (e) {

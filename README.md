@@ -102,14 +102,22 @@ PY_STT_CMD=./.venv/bin/python ./scripts/transcribe_faster_whisper.py --model med
 
 ## Summarization (LLM)
 
-If `OPENAI_API_KEY` is set, the bot will produce a structured summary using OpenAI.
+By default, if `OPENAI_API_KEY` is set, the bot will produce a structured summary using OpenAI.
 If it is **not** set, it falls back to a simple extractive bullet summary.
 
+Prompt template:
+- `SUMMARY_PROMPT` — file name inside `./prompts` (default: `summary_ru.txt`)
+
+OpenAI:
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (default: `gpt-4o-mini`)
-- `SUMMARY_PROMPT_LANG=ru|en`
-- `SUMMARY_PROMPT_FILE_RU` (default: `prompts/summary_ru.txt`)
-- `SUMMARY_PROMPT_FILE_EN` (default: `prompts/summary_en.txt`)
+- `OPENAI_HTTP_TIMEOUT_MS`
+
+Local/remote HTTP LLM (e.g. on another VM):
+- `LLM_PROVIDER=http`
+- `LLM_HTTP_URL` — endpoint that accepts `{prompt, model?}` and returns `{text}`
+- `LLM_MODEL` (optional)
+- `LLM_HTTP_TIMEOUT_MS`
 
 ## Run
 
