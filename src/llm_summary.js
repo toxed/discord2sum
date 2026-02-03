@@ -43,14 +43,19 @@ async function callOpenAI({ apiKey, model, prompt, timeoutMs }) {
 }
 
 async function callHttpLLM({ url, model, prompt, timeoutMs }) {
-  // Supports a very simple JSON API:
-  // Request: { model?: string, prompt: string }
-  // Response: { text: string }
+  // Supports a simple JSON API.
   //
-  // This is compatible with many small wrappers around local LLM servers.
+  // Request (generic): { model?: string, prompt: string }
+  // Response (generic): { text: string }
+  //
+  // Also supports Ollama /api/generate (non-stream):
+  // Request: { model: string, prompt: string, stream: false }
+  // Response: { response: string, ... }
 
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), timeoutMs);
+
+  const isOllamaGenerate = /\/api\/generate\b/.test(url);
 
   const res = await fetch(url, {
     method: 'POST',
@@ -58,6 +63,7 @@ async function callHttpLLM({ url, model, prompt, timeoutMs }) {
     body: JSON.stringify({
       model: model || undefined,
       prompt,
+      ...(isOllamaGenerate ? { stream: false } : {}),
     }),
     signal: ac.signal,
   }).finally(() => clearTimeout(t));
@@ -67,7 +73,7 @@ async function callHttpLLM({ url, model, prompt, timeoutMs }) {
     throw new Error(`HTTP LLM error: ${res.status} ${JSON.stringify(json)}`);
   }
 
-  const text = json?.text?.trim();
+  const text = (json?.text ?? json?.response ?? json?.result)?.trim();
   if (!text) throw new Error('HTTP LLM returned empty text');
   return text;
 }
