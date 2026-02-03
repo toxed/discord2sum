@@ -11,6 +11,10 @@ export function loadConfigFromEnv(env = process.env) {
     DISCORD_GUILD_ID: env.DISCORD_GUILD_ID || null,
     DISCORD_NOTICE_TEXT_CHANNEL_ID: env.DISCORD_NOTICE_TEXT_CHANNEL_ID || null,
 
+    // Discord voice receive: DAVE (end-to-end voice encryption) can cause intermittent decrypt failures
+    // when packets arrive unencrypted. Disable by default for recorder reliability.
+    DISCORD_DAVE_ENCRYPTION: env.DISCORD_DAVE_ENCRYPTION == null ? false : isTruthy(env.DISCORD_DAVE_ENCRYPTION),
+
     TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID: env.TELEGRAM_CHAT_ID,
 
@@ -18,7 +22,12 @@ export function loadConfigFromEnv(env = process.env) {
     WHISPER_CPP_MODEL: env.WHISPER_CPP_MODEL || null,
     PY_STT_CMD: env.PY_STT_CMD || null,
 
+    // Deprecated: SUMMARY_PROMPT_LANG used to pick ru/en templates.
+    // Kept for backward compatibility, but prompt selection should use SUMMARY_PROMPT.
     SUMMARY_PROMPT_LANG: env.SUMMARY_PROMPT_LANG || 'ru',
+
+    // Preferred: choose exact prompt file under ./prompts (e.g. "summary_ru.txt")
+    SUMMARY_PROMPT: env.SUMMARY_PROMPT || null,
 
     OPENAI_API_KEY: env.OPENAI_API_KEY || null,
     OPENAI_MODEL: env.OPENAI_MODEL || 'gpt-4o-mini',

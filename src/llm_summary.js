@@ -14,7 +14,7 @@ function applyTemplate(tpl, vars) {
   return out;
 }
 
-export async function summarizeTranscriptWithLLM({ transcript, lang = 'ru' }) {
+export async function summarizeTranscriptWithLLM({ transcript }) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
@@ -22,18 +22,28 @@ export async function summarizeTranscriptWithLLM({ transcript, lang = 'ru' }) {
     throw new Error('OPENAI_API_KEY is not set');
   }
 
-  const fileRu = process.env.SUMMARY_PROMPT_FILE_RU || 'prompts/summary_ru.txt';
-  const fileEn = process.env.SUMMARY_PROMPT_FILE_EN || 'prompts/summary_en.txt';
+  // Prompt selection:
+  // 1) SUMMARY_PROMPT (preferred): a file name inside ./prompts (e.g. "summary_ru.txt")
+  // 2) MEETING_MODE (legacy shortcut): maps to a preset file
+  // 3) fallback: prompts/summary_ru.txt
 
-  // Optional: meeting mode can swap prompt template
+  const summaryPromptName = String(process.env.SUMMARY_PROMPT || '').trim();
+
+  // Optional: meeting mode can swap prompt template (legacy shortcut)
   const mode = String(process.env.MEETING_MODE || '').toLowerCase().trim();
-  const modeToPrompt = {
-    standup: 'prompts/standup_ru.txt',
-    incident: 'prompts/incident_ru.txt',
+  const modeToPromptName = {
+    standup: 'standup_ru.txt',
+    incident: 'incident_ru.txt',
   };
 
-  const basePrompt = (lang || 'ru').toLowerCase().startsWith('en') ? fileEn : fileRu;
-  const promptFile = modeToPrompt[mode] || basePrompt;
+  const chosenName = summaryPromptName || modeToPromptName[mode] || 'summary_ru.txt';
+
+  // Security: only allow simple filenames; force prompts/ prefix.
+  if (!/^[a-zA-Z0-9._-]+$/.test(chosenName)) {
+    throw new Error(`Invalid SUMMARY_PROMPT filename: ${chosenName}`);
+  }
+
+  const promptFile = `prompts/${chosenName}`;
 
   const template = loadTemplate(promptFile);
   const prompt = applyTemplate(template, {

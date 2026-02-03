@@ -61,6 +61,8 @@ const SKIP_EMPTY_CALL_UNDER_MS = CFG.SKIP_EMPTY_CALL_UNDER_MS;
 const INTRO_OPUS_PATH = CFG.INTRO_OPUS_PATH;
 const TRANSCRIPTS_DIR = CFG.TRANSCRIPTS_DIR;
 
+const DISCORD_DAVE_ENCRYPTION = CFG.DISCORD_DAVE_ENCRYPTION;
+
 const TRANSCRIPTS_MAX_FILES = CFG.TRANSCRIPTS_MAX_FILES;
 const TRANSCRIPTS_MAX_AGE_DAYS = CFG.TRANSCRIPTS_MAX_AGE_DAYS;
 
@@ -309,6 +311,8 @@ async function ensureJoined(voiceChannel) {
       adapterCreator: voiceChannel.guild.voiceAdapterCreator,
       selfDeaf: false,
       selfMute: true,
+      // Disable DAVE voice encryption unless explicitly enabled; improves receiver stability.
+      daveEncryption: DISCORD_DAVE_ENCRYPTION,
     });
 
     await entersState(conn, VoiceConnectionStatus.Ready, 30_000);
@@ -545,7 +549,6 @@ async function finalizeAndSend(guild) {
     try {
       summaryText = await summarizeTranscriptWithLLM({
         transcript: rawForLLM,
-        lang: SUMMARY_PROMPT_LANG,
       });
     } catch (e) {
       logger.warn('LLM summary failed; falling back to heuristics', e?.message || e);
