@@ -2,7 +2,7 @@ You are an assistant analyzing a team call transcript.
 
 Task: produce a concise, structured, easy-to-read summary, and extract all decisions and action items.
 
-Analyze the following transcript (in Russian).
+Analyze the following transcript and return the result in {{LANG}}.
 
 Return the result strictly in this format:
 

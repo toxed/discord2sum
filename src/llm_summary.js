@@ -103,8 +103,11 @@ export async function summarizeTranscriptWithLLM({ transcript }) {
   const promptFile = `prompts/${chosenName}`;
 
   const template = loadTemplate(promptFile);
+  const lang = String(process.env.SUMMARY_LANG || process.env.LLM_OUTPUT_LANG || '').trim() || 'English';
+
   const prompt = applyTemplate(template, {
     TRANSCRIPT: transcript,
+    LANG: lang,
   });
 
   // Provider selection:
