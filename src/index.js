@@ -102,6 +102,7 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
+// Current active voice session state.
 let active = {
   guildId: null,
   voiceChannelId: null,
@@ -124,18 +125,25 @@ let active = {
   manualGuildId: null,
   manualVoiceChannelId: null,
 
-  // Metrics / health
+  // Metrics / health (per active session)
   metrics: {
     lastSpeechAt: null,
     lastSttOkAt: null,
     lastSttFailAt: null,
-    lastFinalizeAt: null,
-    lastSummarySentAt: null,
     segmentsOk: 0,
     sttFailures: 0,
     decodeFailures: 0,
     totalAudioSeconds: 0,
   },
+};
+
+// Cross-session timestamps so /status shows the most recent finalize/delivery
+// even after the bot auto-rejoins and resets `active`.
+const last = {
+  finalizeAt: null,
+  summarySentAt: null,
+  guildId: null,
+  voiceChannelId: null,
 };
 
 let tickInFlight = false;
@@ -562,7 +570,9 @@ async function finalizeAndSend(guild) {
   // Bound transcript size passed to LLM (untrusted STT output; cost/DoS guard)
   const rawForLLM = raw.length > MAX_TRANSCRIPT_CHARS_FOR_LLM ? raw.slice(-MAX_TRANSCRIPT_CHARS_FOR_LLM) : raw;
 
-  active.metrics.lastFinalizeAt = new Date().toISOString();
+  last.finalizeAt = new Date().toISOString();
+  last.guildId = active.guildId;
+  last.voiceChannelId = active.voiceChannelId;
 
   // Persist transcript to disk
   try {
@@ -657,7 +667,9 @@ async function finalizeAndSend(guild) {
         text: msg,
         webhookPayload,
       });
-      active.metrics.lastSummarySentAt = new Date().toISOString();
+      last.summarySentAt = new Date().toISOString();
+      last.guildId = active.guildId;
+      last.voiceChannelId = active.voiceChannelId;
     } catch (e) {
       logger.warn('Delivery failed (one or more destinations)', e?.message || e);
     }
@@ -851,8 +863,8 @@ client.on('interactionCreate', async (interaction) => {
         `lastSpeechAt: ${m.lastSpeechAt || '(none)'}\n` +
         `lastSttOkAt: ${m.lastSttOkAt || '(none)'}\n` +
         `lastSttFailAt: ${m.lastSttFailAt || '(none)'}\n` +
-        `lastFinalizeAt: ${m.lastFinalizeAt || '(none)'}\n` +
-        `lastSummarySentAt: ${m.lastSummarySentAt || '(none)'}\n` +
+        `lastFinalizeAt: ${last.finalizeAt || '(none)'}\n` +
+        `lastSummarySentAt: ${last.summarySentAt || '(none)'}\n` +
         `segmentsOk: ${m.segmentsOk || 0}\n` +
         `sttFailures: ${m.sttFailures || 0}\n` +
         `decodeFailures: ${m.decodeFailures || 0}\n` +
