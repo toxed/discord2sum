@@ -1,0 +1,9 @@
+services:
+  discord2sum:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Optional: persist transcripts (local only)
+    volumes:
+      - ./transcripts:/app/transcripts

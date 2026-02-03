@@ -138,12 +138,12 @@ function scheduleTick(ms) {
 }
 
 async function ffmpegPcmToWav(pcmPath, wavPath) {
-  // input is raw s16le, 48kHz, 2ch
+  // input is raw s16le, 48kHz, mono (our Opus decoder is configured for 1 channel)
   return new Promise((resolve, reject) => {
     const args = [
       '-f', 's16le',
       '-ar', '48000',
-      '-ac', '2',
+      '-ac', '1',
       '-i', pcmPath,
       '-y',
       wavPath,

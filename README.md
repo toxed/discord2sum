@@ -14,6 +14,8 @@
 - Audio is processed locally; intermediate audio files are removed after transcription.
 - Transcripts may contain sensitive content. Store/share them responsibly.
 
+See: [PRIVACY.md](./PRIVACY.md)
+
 ## Requirements
 
 - Node.js 18+
@@ -22,12 +24,23 @@
   - **whisper.cpp** (recommended)
   - **Python faster-whisper** (supported via a command template)
 
-## Setup
+## Quickstart
+
+### Local (npm)
 
 ```bash
 npm install
 cp .env.example .env
 # edit .env
+npm start
+```
+
+### Docker
+
+```bash
+cp .env.example .env
+# edit .env
+docker compose up -d --build
 ```
 
 ### Discord bot

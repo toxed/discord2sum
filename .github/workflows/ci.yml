@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: node -c src/index.js
+      - run: node -c src/stt.js
+      - run: node -c src/telegram.js
+      - run: node -c src/llm_summary.js
+      - run: node -c src/config.js
+      - run: node -c src/security.js
