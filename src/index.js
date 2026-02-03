@@ -29,9 +29,8 @@ import { summarizeTranscriptWithLLM } from './llm_summary.js';
 import { sanitizeLabel } from './security.js';
 import { loadConfigFromEnv, validateConfig } from './config.js';
 import { pruneOldFiles } from './retention.js';
-import { sendWebhook } from './webhook.js';
-import { sendSlackMessage } from './slack.js';
 import { runSttSelfTest } from './selftest.js';
+import { deliverSummary } from './delivery.js';
 
 const logger = makeLogger(process.env.LOG_LEVEL || 'info');
 
@@ -577,45 +576,41 @@ async function finalizeAndSend(guild) {
       `Participants: ${participants}\n\n` +
       `${summaryText}`;
 
-    await sendTelegramMessage({
-      token: TELEGRAM_BOT_TOKEN,
-      chatId: TELEGRAM_CHAT_ID,
-      text: msg,
-    });
+    const webhookPayload = {
+      channel: channelName,
+      startedAt,
+      endedAt: endedAtIso,
+      participants: participants.split(',').map((s) => s.trim()).filter(Boolean),
+      summary: summaryText,
+    };
 
-    // Optional Slack delivery (text)
-    if (SLACK_WEBHOOK_URL) {
-      try {
-        await sendSlackMessage({
+    try {
+      await deliverSummary({
+        logger,
+        telegram: {
+          enabled: true,
+          token: TELEGRAM_BOT_TOKEN,
+          chatId: TELEGRAM_CHAT_ID,
+        },
+        slack: {
+          enabled: Boolean(SLACK_WEBHOOK_URL),
           webhookUrl: SLACK_WEBHOOK_URL,
           channel: SLACK_CHANNEL,
           username: SLACK_USERNAME,
           iconEmoji: SLACK_ICON_EMOJI,
           timeoutMs: SLACK_TIMEOUT_MS,
           maxChars: SLACK_MAX_CHARS,
-          text: msg,
-        });
-      } catch (e) {
-        logger.warn('Slack delivery failed', e?.message || e);
-      }
-    }
-
-    // Optional webhook delivery (JSON)
-    try {
-      await sendWebhook({
-        url: WEBHOOK_URL,
-        timeoutMs: WEBHOOK_TIMEOUT_MS,
-        logger,
-        payload: {
-          channel: channelName,
-          startedAt,
-          endedAt: endedAtIso,
-          participants: participants.split(',').map((s) => s.trim()).filter(Boolean),
-          summary: summaryText,
         },
+        webhook: {
+          enabled: Boolean(WEBHOOK_URL),
+          url: WEBHOOK_URL,
+          timeoutMs: WEBHOOK_TIMEOUT_MS,
+        },
+        text: msg,
+        webhookPayload,
       });
     } catch (e) {
-      logger.warn('Webhook failed', e?.message || e);
+      logger.warn('Delivery failed (one or more destinations)', e?.message || e);
     }
   }
 
