@@ -37,6 +37,10 @@ export function loadConfigFromEnv(env = process.env) {
     TRANSCRIPTS_MAX_FILES: clampNumber('TRANSCRIPTS_MAX_FILES', env.TRANSCRIPTS_MAX_FILES, { min: 0, max: 100_000, fallback: 0 }),
     TRANSCRIPTS_MAX_AGE_DAYS: clampNumber('TRANSCRIPTS_MAX_AGE_DAYS', env.TRANSCRIPTS_MAX_AGE_DAYS, { min: 0, max: 3650, fallback: 0 }),
 
+    // Optional webhook
+    WEBHOOK_URL: env.WEBHOOK_URL || null,
+    WEBHOOK_TIMEOUT_MS: clampNumber('WEBHOOK_TIMEOUT_MS', env.WEBHOOK_TIMEOUT_MS, { min: 1000, max: 120_000, fallback: 15000 }),
+
     INTRO_OPUS_PATH_RAW: env.INTRO_OPUS_PATH || 'assets/intro.opus',
     TRANSCRIPTS_DIR_RAW: env.TRANSCRIPTS_DIR || 'transcripts',
   };

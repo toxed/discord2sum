@@ -24,7 +24,16 @@ export async function summarizeTranscriptWithLLM({ transcript, lang = 'ru' }) {
 
   const fileRu = process.env.SUMMARY_PROMPT_FILE_RU || 'prompts/summary_ru.txt';
   const fileEn = process.env.SUMMARY_PROMPT_FILE_EN || 'prompts/summary_en.txt';
-  const promptFile = (lang || 'ru').toLowerCase().startsWith('en') ? fileEn : fileRu;
+
+  // Optional: meeting mode can swap prompt template
+  const mode = String(process.env.MEETING_MODE || '').toLowerCase().trim();
+  const modeToPrompt = {
+    standup: 'prompts/standup_ru.txt',
+    incident: 'prompts/incident_ru.txt',
+  };
+
+  const basePrompt = (lang || 'ru').toLowerCase().startsWith('en') ? fileEn : fileRu;
+  const promptFile = modeToPrompt[mode] || basePrompt;
 
   const template = loadTemplate(promptFile);
   const prompt = applyTemplate(template, {

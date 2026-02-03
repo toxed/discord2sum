@@ -29,6 +29,7 @@ import { summarizeTranscriptWithLLM } from './llm_summary.js';
 import { sanitizeLabel } from './security.js';
 import { loadConfigFromEnv, validateConfig } from './config.js';
 import { pruneOldFiles } from './retention.js';
+import { sendWebhook } from './webhook.js';
 
 const logger = makeLogger(process.env.LOG_LEVEL || 'info');
 
@@ -61,6 +62,9 @@ const TRANSCRIPTS_DIR = CFG.TRANSCRIPTS_DIR;
 
 const TRANSCRIPTS_MAX_FILES = CFG.TRANSCRIPTS_MAX_FILES;
 const TRANSCRIPTS_MAX_AGE_DAYS = CFG.TRANSCRIPTS_MAX_AGE_DAYS;
+
+const WEBHOOK_URL = CFG.WEBHOOK_URL;
+const WEBHOOK_TIMEOUT_MS = CFG.WEBHOOK_TIMEOUT_MS;
 
 const client = new Client({
   intents: [
@@ -515,6 +519,24 @@ async function finalizeAndSend(guild) {
       chatId: TELEGRAM_CHAT_ID,
       text: msg,
     });
+
+    // Optional webhook delivery (JSON)
+    try {
+      await sendWebhook({
+        url: WEBHOOK_URL,
+        timeoutMs: WEBHOOK_TIMEOUT_MS,
+        logger,
+        payload: {
+          channel: channelName,
+          startedAt,
+          endedAt: endedAtIso,
+          participants: participants.split(',').map((s) => s.trim()).filter(Boolean),
+          summary: summaryText,
+        },
+      });
+    } catch (e) {
+      logger.warn('Webhook failed', e?.message || e);
+    }
   }
 
   // cleanup

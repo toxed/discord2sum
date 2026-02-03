@@ -169,6 +169,15 @@ You can enable automatic pruning:
 
 Set both to `0` to disable pruning.
 
+## Optional webhook
+
+You can also deliver minutes as JSON to your own service:
+
+- `WEBHOOK_URL` — target URL
+- `WEBHOOK_TIMEOUT_MS` — request timeout
+
+Payload contains: channel, startedAt, endedAt, participants[], summary.
+
 ## Roadmap
 
 - Optional: upload raw transcript as a file to Telegram (disabled by default)
