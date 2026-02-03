@@ -30,6 +30,7 @@ import { sanitizeLabel } from './security.js';
 import { loadConfigFromEnv, validateConfig } from './config.js';
 import { pruneOldFiles } from './retention.js';
 import { sendWebhook } from './webhook.js';
+import { sendSlackMessage } from './slack.js';
 import { runSttSelfTest } from './selftest.js';
 
 const logger = makeLogger(process.env.LOG_LEVEL || 'info');
@@ -68,6 +69,12 @@ const TRANSCRIPTS_MAX_AGE_DAYS = CFG.TRANSCRIPTS_MAX_AGE_DAYS;
 
 const WEBHOOK_URL = CFG.WEBHOOK_URL;
 const WEBHOOK_TIMEOUT_MS = CFG.WEBHOOK_TIMEOUT_MS;
+
+const SLACK_WEBHOOK_URL = CFG.SLACK_WEBHOOK_URL;
+const SLACK_CHANNEL = CFG.SLACK_CHANNEL;
+const SLACK_USERNAME = CFG.SLACK_USERNAME;
+const SLACK_ICON_EMOJI = CFG.SLACK_ICON_EMOJI;
+const SLACK_TIMEOUT_MS = CFG.SLACK_TIMEOUT_MS;
 
 const STT_SELFTEST = CFG.STT_SELFTEST;
 const STT_ERROR_NOTIFY = CFG.STT_ERROR_NOTIFY;
@@ -574,6 +581,22 @@ async function finalizeAndSend(guild) {
       chatId: TELEGRAM_CHAT_ID,
       text: msg,
     });
+
+    // Optional Slack delivery (text)
+    if (SLACK_WEBHOOK_URL) {
+      try {
+        await sendSlackMessage({
+          webhookUrl: SLACK_WEBHOOK_URL,
+          channel: SLACK_CHANNEL,
+          username: SLACK_USERNAME,
+          iconEmoji: SLACK_ICON_EMOJI,
+          timeoutMs: SLACK_TIMEOUT_MS,
+          text: msg,
+        });
+      } catch (e) {
+        logger.warn('Slack delivery failed', e?.message || e);
+      }
+    }
 
     // Optional webhook delivery (JSON)
     try {

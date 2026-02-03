@@ -178,6 +178,16 @@ You can also deliver minutes as JSON to your own service:
 
 Payload contains: channel, startedAt, endedAt, participants[], summary.
 
+## Optional Slack
+
+Send the same summary text to Slack via an **Incoming Webhook**:
+
+- `SLACK_WEBHOOK_URL`
+- `SLACK_CHANNEL` (optional override; otherwise uses webhook default)
+- `SLACK_USERNAME` (optional)
+- `SLACK_ICON_EMOJI` (optional)
+- `SLACK_TIMEOUT_MS`
+
 ## Roadmap
 
 - Optional: upload raw transcript as a file to Telegram (disabled by default)

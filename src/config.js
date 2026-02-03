@@ -46,6 +46,13 @@ export function loadConfigFromEnv(env = process.env) {
     WEBHOOK_URL: env.WEBHOOK_URL || null,
     WEBHOOK_TIMEOUT_MS: clampNumber('WEBHOOK_TIMEOUT_MS', env.WEBHOOK_TIMEOUT_MS, { min: 1000, max: 120_000, fallback: 15000 }),
 
+    // Optional Slack (Incoming Webhook)
+    SLACK_WEBHOOK_URL: env.SLACK_WEBHOOK_URL || null,
+    SLACK_CHANNEL: env.SLACK_CHANNEL || null,
+    SLACK_USERNAME: env.SLACK_USERNAME || null,
+    SLACK_ICON_EMOJI: env.SLACK_ICON_EMOJI || null,
+    SLACK_TIMEOUT_MS: clampNumber('SLACK_TIMEOUT_MS', env.SLACK_TIMEOUT_MS, { min: 1000, max: 120_000, fallback: 15000 }),
+
     // Alerts / self-check
     // Default true unless explicitly set to false.
     STT_SELFTEST: env.STT_SELFTEST == null ? true : isTruthy(env.STT_SELFTEST),
