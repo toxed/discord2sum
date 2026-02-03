@@ -154,10 +154,21 @@ let active = {
 const last = {
   finalizeAt: null,
   summarySentAt: null,
+
+  // Cross-session STT diagnostics (last observed segment)
   nonEmptyTextAt: null,
   sttEmptyAt: null,
-  guildId: null,
-  voiceChannelId: null,
+
+  // Snapshot of the most recent finalized call (copied from active right before reset)
+  call: {
+    guildId: null,
+    voiceChannelId: null,
+    startedAt: null,
+    endedAt: null,
+    participants: 0,
+    metrics: null,
+  },
+
   // debug (local)
   lastSegmentWav: null,
   lastSegmentSeconds: null,
@@ -629,9 +640,16 @@ async function finalizeAndSend(guild) {
   const rawForLLM = raw.length > MAX_TRANSCRIPT_CHARS_FOR_LLM ? raw.slice(-MAX_TRANSCRIPT_CHARS_FOR_LLM) : raw;
 
   last.finalizeAt = new Date().toISOString();
-  last.guildId = active.guildId;
-  last.voiceChannelId = active.voiceChannelId;
 
+  // Snapshot last call state for /status after we reset `active`.
+  last.call = {
+    guildId: active.guildId,
+    voiceChannelId: active.voiceChannelId,
+    startedAt,
+    endedAt: endedAtIso,
+    participants: active.participants?.size || 0,
+    metrics: { ...(active.metrics || {}) },
+  };
   // Persist transcript to disk
   try {
     const safeName = sanitizeLabel(channelName, { maxLen: 80 }).replace(/[^a-zA-Z0-9а-яА-Я._-]+/g, '_');
@@ -726,8 +744,9 @@ async function finalizeAndSend(guild) {
         webhookPayload,
       });
       last.summarySentAt = new Date().toISOString();
-      last.guildId = active.guildId;
-      last.voiceChannelId = active.voiceChannelId;
+      // Keep latest ids for convenience
+      last.call.guildId = active.guildId;
+      last.call.voiceChannelId = active.voiceChannelId;
     } catch (e) {
       logger.warn('Delivery failed (one or more destinations)', e?.message || e);
     }
@@ -926,16 +945,12 @@ client.on('interactionCreate', async (interaction) => {
         `segments_total: ${active.transcripts.length}\n` +
         `pending_jobs: ${active.pending.length}\n` +
         `\n` +
-        `Metrics\n` +
+        `Metrics (active)\n` +
         `lastSpeechAt: ${m.lastSpeechAt || '(none)'}\n` +
         `lastSttOkAt: ${m.lastSttOkAt || '(none)'}\n` +
         `lastSttEmptyAt: ${m.lastSttEmptyAt || '(none)'}\n` +
         `lastSttFailAt: ${m.lastSttFailAt || '(none)'}\n` +
         `lastNonEmptyTextAt: ${m.lastNonEmptyTextAt || '(none)'}\n` +
-        `lastFinalizeAt: ${last.finalizeAt || '(none)'}\n` +
-        `lastSummarySentAt: ${last.summarySentAt || '(none)'}\n` +
-        `last.nonEmptyTextAt: ${last.nonEmptyTextAt || '(none)'}\n` +
-        `last.sttEmptyAt: ${last.sttEmptyAt || '(none)'}\n` +
         `segmentsOk: ${m.segmentsOk || 0}\n` +
         `segmentsEmpty: ${m.segmentsEmpty || 0}\n` +
         `segmentsTotal: ${m.segmentsTotal || 0}\n` +
@@ -945,7 +960,25 @@ client.on('interactionCreate', async (interaction) => {
         `lastSegSeconds: ${m.lastSegmentSeconds ?? '(none)'}\n` +
         `lastSegWav: ${m.lastSegmentWav ? String(m.lastSegmentWav).split('/').slice(-2).join('/') : '(none)'}\n` +
         `lastSttTextLen: ${m.lastSttTextLen ?? '(none)'}\n` +
-        `lastSttSafeTextLen: ${m.lastSttSafeTextLen ?? '(none)'}`;
+        `lastSttSafeTextLen: ${m.lastSttSafeTextLen ?? '(none)'}\n` +
+        `\n` +
+        `LastCall (snapshot)\n` +
+        `finalizeAt: ${last.finalizeAt || '(none)'}\n` +
+        `summarySentAt: ${last.summarySentAt || '(none)'}\n` +
+        `guild: ${last.call?.guildId || '(none)'}\n` +
+        `voice: ${last.call?.voiceChannelId || '(none)'}\n` +
+        `started: ${last.call?.startedAt || '(none)'}\n` +
+        `ended: ${last.call?.endedAt || '(none)'}\n` +
+        `participants: ${last.call?.participants ?? 0}\n` +
+        `segmentsOk: ${last.call?.metrics?.segmentsOk ?? 0}\n` +
+        `segmentsEmpty: ${last.call?.metrics?.segmentsEmpty ?? 0}\n` +
+        `segmentsTotal: ${last.call?.metrics?.segmentsTotal ?? 0}\n` +
+        `sttFailures: ${last.call?.metrics?.sttFailures ?? 0}\n` +
+        `decodeFailures: ${last.call?.metrics?.decodeFailures ?? 0}\n` +
+        `totalAudioSeconds: ${Math.round(((last.call?.metrics?.totalAudioSeconds) || 0) * 10) / 10}\n` +
+        `lastSttOkAt: ${last.call?.metrics?.lastSttOkAt || '(none)'}\n` +
+        `lastSttEmptyAt: ${last.call?.metrics?.lastSttEmptyAt || '(none)'}\n` +
+        `lastNonEmptyTextAt: ${last.call?.metrics?.lastNonEmptyTextAt || '(none)'}`;
       await interaction.reply({ content: '```\n' + text + '\n```', ephemeral: true });
       return;
     }
