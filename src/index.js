@@ -129,6 +129,8 @@ let active = {
     lastSpeechAt: null,
     lastSttOkAt: null,
     lastSttFailAt: null,
+    lastFinalizeAt: null,
+    lastSummarySentAt: null,
     segmentsOk: 0,
     sttFailures: 0,
     decodeFailures: 0,
@@ -363,6 +365,8 @@ async function ensureJoined(voiceChannel) {
       lastSpeechAt: null,
       lastSttOkAt: null,
       lastSttFailAt: null,
+      lastFinalizeAt: null,
+      lastSummarySentAt: null,
       segmentsOk: 0,
       sttFailures: 0,
       decodeFailures: 0,
@@ -558,6 +562,8 @@ async function finalizeAndSend(guild) {
   // Bound transcript size passed to LLM (untrusted STT output; cost/DoS guard)
   const rawForLLM = raw.length > MAX_TRANSCRIPT_CHARS_FOR_LLM ? raw.slice(-MAX_TRANSCRIPT_CHARS_FOR_LLM) : raw;
 
+  active.metrics.lastFinalizeAt = new Date().toISOString();
+
   // Persist transcript to disk
   try {
     const safeName = sanitizeLabel(channelName, { maxLen: 80 }).replace(/[^a-zA-Z0-9а-яА-Я._-]+/g, '_');
@@ -651,6 +657,7 @@ async function finalizeAndSend(guild) {
         text: msg,
         webhookPayload,
       });
+      active.metrics.lastSummarySentAt = new Date().toISOString();
     } catch (e) {
       logger.warn('Delivery failed (one or more destinations)', e?.message || e);
     }
@@ -686,6 +693,8 @@ async function finalizeAndSend(guild) {
       lastSpeechAt: null,
       lastSttOkAt: null,
       lastSttFailAt: null,
+      lastFinalizeAt: null,
+      lastSummarySentAt: null,
       segmentsOk: 0,
       sttFailures: 0,
       decodeFailures: 0,
@@ -815,8 +824,20 @@ client.on('interactionCreate', async (interaction) => {
       const started = active.startedAt ? active.startedAt.toISOString() : '(none)';
       const dur = active.startedAt ? Math.round((Date.now() - active.startedAt.getTime()) / 1000) : 0;
       const m = active.metrics || {};
+      const health = (() => {
+        const sttOk = Number(m.segmentsOk || 0);
+        const sttFail = Number(m.sttFailures || 0);
+        const decFail = Number(m.decodeFailures || 0);
+        if (sttFail > 0 && sttOk === 0) return 'BAD (STT failing)';
+        if (decFail > 0 && sttOk === 0) return 'BAD (decode failing)';
+        if (decFail > 0 || sttFail > 0) return 'WARN';
+        if (dur > 180 && sttOk === 0) return 'WARN (no text yet)';
+        return 'OK';
+      })();
+
       const text =
         `Status\n` +
+        `health: ${health}\n` +
         `manual: ${active.manual}\n` +
         `guild: ${active.guildId || '(none)'}\n` +
         `voice: ${active.voiceChannelId || '(none)'}\n` +
@@ -830,6 +851,8 @@ client.on('interactionCreate', async (interaction) => {
         `lastSpeechAt: ${m.lastSpeechAt || '(none)'}\n` +
         `lastSttOkAt: ${m.lastSttOkAt || '(none)'}\n` +
         `lastSttFailAt: ${m.lastSttFailAt || '(none)'}\n` +
+        `lastFinalizeAt: ${m.lastFinalizeAt || '(none)'}\n` +
+        `lastSummarySentAt: ${m.lastSummarySentAt || '(none)'}\n` +
         `segmentsOk: ${m.segmentsOk || 0}\n` +
         `sttFailures: ${m.sttFailures || 0}\n` +
         `decodeFailures: ${m.decodeFailures || 0}\n` +
@@ -873,6 +896,8 @@ client.on('interactionCreate', async (interaction) => {
         lastSpeechAt: null,
         lastSttOkAt: null,
         lastSttFailAt: null,
+        lastFinalizeAt: null,
+        lastSummarySentAt: null,
         segmentsOk: 0,
         sttFailures: 0,
         decodeFailures: 0,
