@@ -28,6 +28,7 @@ import { sendTelegramMessage } from './telegram.js';
 import { summarizeTranscriptWithLLM } from './llm_summary.js';
 import { sanitizeLabel } from './security.js';
 import { loadConfigFromEnv, validateConfig } from './config.js';
+import { pruneOldFiles } from './retention.js';
 
 const logger = makeLogger(process.env.LOG_LEVEL || 'info');
 
@@ -57,6 +58,9 @@ const SKIP_EMPTY_CALL_UNDER_MS = CFG.SKIP_EMPTY_CALL_UNDER_MS;
 
 const INTRO_OPUS_PATH = CFG.INTRO_OPUS_PATH;
 const TRANSCRIPTS_DIR = CFG.TRANSCRIPTS_DIR;
+
+const TRANSCRIPTS_MAX_FILES = CFG.TRANSCRIPTS_MAX_FILES;
+const TRANSCRIPTS_MAX_AGE_DAYS = CFG.TRANSCRIPTS_MAX_AGE_DAYS;
 
 const client = new Client({
   intents: [
@@ -460,6 +464,18 @@ async function finalizeAndSend(guild) {
       `Participants: ${participants}\n\n`;
     fs.writeFileSync(outPath, header + raw + '\n', { encoding: 'utf-8' });
     logger.info('Transcript saved', outPath);
+
+    // Retention: prune old local transcripts
+    try {
+      pruneOldFiles({
+        dir: TRANSCRIPTS_DIR,
+        maxFiles: TRANSCRIPTS_MAX_FILES,
+        maxAgeDays: TRANSCRIPTS_MAX_AGE_DAYS,
+        logger,
+      });
+    } catch (e) {
+      logger.warn('Transcript retention prune failed', e?.message || e);
+    }
   } catch (e) {
     logger.warn('Failed to save transcript', e?.message || e);
   }

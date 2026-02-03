@@ -138,8 +138,39 @@ A template unit file is provided:
 
 Replace placeholders (`REPLACE_ME_*`) and install it as a normal systemd unit.
 
+## Troubleshooting
+
+### Telegram: nothing arrives
+
+- Ensure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set.
+- Make sure the bot can message the chat (for groups: add the bot and allow it to post).
+- Check logs (`journalctl -u discord-voice-summarizer -n 200 --no-pager`).
+
+### STT: "No STT configured" / no transcript text
+
+- Configure exactly one:
+  - `PY_STT_CMD=python3 ./scripts/transcribe_faster_whisper.py ...`, or
+  - `WHISPER_CPP_BIN` + `WHISPER_CPP_MODEL`
+- For `PY_STT_CMD`, only `python/python3` is allowed and the script must be `./scripts/transcribe_faster_whisper.py`.
+
+### Discord: bot joins but does not capture speech
+
+- Ensure the bot has permissions to **Connect** (and optionally **Speak** for intro playback).
+- Some Discord voice packet/decoder errors may occur; check logs for `record pipeline failed`.
+
+### Keeping transcripts under control (retention)
+
+Transcripts are saved locally to `TRANSCRIPTS_DIR` (default: `./transcripts`).
+
+You can enable automatic pruning:
+
+- `TRANSCRIPTS_MAX_FILES` — keep only newest N transcript files
+- `TRANSCRIPTS_MAX_AGE_DAYS` — delete files older than N days
+
+Set both to `0` to disable pruning.
+
 ## Roadmap
 
-- (Optional) Upload raw transcript as a file to Telegram (disabled by default)
+- Optional: upload raw transcript as a file to Telegram (disabled by default)
 - Better diarization + timestamps
-- Support multiple simultaneous calls (queue)
+- Multiple simultaneous calls (queue)

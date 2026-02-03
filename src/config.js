@@ -33,6 +33,10 @@ export function loadConfigFromEnv(env = process.env) {
     MAX_SEGMENT_TEXT_CHARS: clampNumber('MAX_SEGMENT_TEXT_CHARS', env.MAX_SEGMENT_TEXT_CHARS, { min: 200, max: 20_000, fallback: 4000 }),
     MAX_TRANSCRIPT_CHARS_FOR_LLM: clampNumber('MAX_TRANSCRIPT_CHARS_FOR_LLM', env.MAX_TRANSCRIPT_CHARS_FOR_LLM, { min: 1000, max: 200_000, fallback: 20_000 }),
 
+    // Local transcript retention (0 disables)
+    TRANSCRIPTS_MAX_FILES: clampNumber('TRANSCRIPTS_MAX_FILES', env.TRANSCRIPTS_MAX_FILES, { min: 0, max: 100_000, fallback: 0 }),
+    TRANSCRIPTS_MAX_AGE_DAYS: clampNumber('TRANSCRIPTS_MAX_AGE_DAYS', env.TRANSCRIPTS_MAX_AGE_DAYS, { min: 0, max: 3650, fallback: 0 }),
+
     INTRO_OPUS_PATH_RAW: env.INTRO_OPUS_PATH || 'assets/intro.opus',
     TRANSCRIPTS_DIR_RAW: env.TRANSCRIPTS_DIR || 'transcripts',
   };
