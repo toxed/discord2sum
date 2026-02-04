@@ -78,6 +78,42 @@ async function callHttpLLM({ url, model, prompt, timeoutMs }) {
   return text;
 }
 
+function splitIntoChunksByNewline(text, { maxChars }) {
+  const t = String(text || '');
+  if (!t) return [];
+  if (!Number.isFinite(maxChars) || maxChars <= 0) return [t];
+  if (t.length <= maxChars) return [t];
+
+  const lines = t.split('\n');
+  const chunks = [];
+  let cur = '';
+
+  for (const line of lines) {
+    const candidate = cur ? `${cur}\n${line}` : line;
+
+    // If adding this line exceeds max, flush current chunk.
+    if (cur && candidate.length > maxChars) {
+      chunks.push(cur);
+      cur = line;
+      continue;
+    }
+
+    // If a single line is longer than maxChars, hard-split it (rare; should not happen).
+    if (!cur && line.length > maxChars) {
+      for (let i = 0; i < line.length; i += maxChars) {
+        chunks.push(line.slice(i, i + maxChars));
+      }
+      cur = '';
+      continue;
+    }
+
+    cur = candidate;
+  }
+
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
 export async function summarizeTranscriptWithLLM({ transcript }) {
   const timeoutMs = Number(process.env.LLM_HTTP_TIMEOUT_MS || process.env.OPENAI_HTTP_TIMEOUT_MS || '60000');
 
@@ -88,10 +124,6 @@ export async function summarizeTranscriptWithLLM({ transcript }) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.LLM_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
-  // Prompt selection:
-  // SUMMARY_PROMPT: a file name inside ./prompts (e.g. "summary_ru.txt").
-  // Fallback: summary_ru.txt
-
   const summaryPromptName = String(process.env.SUMMARY_PROMPT || '').trim();
   const chosenName = summaryPromptName || 'summary_ru.txt';
 
@@ -101,27 +133,63 @@ export async function summarizeTranscriptWithLLM({ transcript }) {
   }
 
   const promptFile = `prompts/${chosenName}`;
-
   const template = loadTemplate(promptFile);
-  const lang = String(process.env.SUMMARY_LANG || process.env.LLM_OUTPUT_LANG || '').trim() || 'English';
 
-  const prompt = applyTemplate(template, {
-    TRANSCRIPT: transcript,
-    LANG: lang,
-  });
+  const lang = String(process.env.SUMMARY_LANG || process.env.LLM_OUTPUT_LANG || '').trim() || 'English';
 
   // Provider selection:
   // - LLM_PROVIDER=http + LLM_HTTP_URL => use local/remote HTTP LLM
   // - otherwise => OpenAI (requires OPENAI_API_KEY)
   const useHttp = provider === 'http' || (provider !== 'openai' && Boolean(httpUrl));
 
-  if (useHttp) {
-    if (!httpUrl) throw new Error('LLM_HTTP_URL is not set');
-    return callHttpLLM({ url: httpUrl, model, prompt, timeoutMs });
+  async function callLLM(prompt) {
+    if (useHttp) {
+      if (!httpUrl) throw new Error('LLM_HTTP_URL is not set');
+      return callHttpLLM({ url: httpUrl, model, prompt, timeoutMs });
+    }
+    if (!apiKey) throw new Error('OPENAI_API_KEY is not set');
+    return callOpenAI({ apiKey, model, prompt, timeoutMs });
   }
 
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not set');
+  const chunkChars = Number(process.env.LLM_CHUNK_CHARS || '8000');
+  const maxChunks = Number(process.env.LLM_MAX_CHUNKS || '12');
+
+  // If transcript is small, do single-shot.
+  const t = String(transcript || '');
+  if (!t || t.length <= chunkChars) {
+    const prompt = applyTemplate(template, { TRANSCRIPT: t, LANG: lang });
+    return callLLM(prompt);
   }
-  return callOpenAI({ apiKey, model, prompt, timeoutMs });
+
+  // Map-reduce for long transcripts.
+  let chunks = splitIntoChunksByNewline(t, { maxChars: chunkChars });
+  let omittedCount = 0;
+  if (Number.isFinite(maxChunks) && maxChunks > 0 && chunks.length > maxChunks) {
+    omittedCount = chunks.length - maxChunks;
+    chunks = chunks.slice(-maxChunks);
+  }
+
+  const partials = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const chunkHeader =
+      `You will receive a transcript chunk ${i + 1}/${chunks.length}. ` +
+      `Produce a structured partial summary in ${lang} using the exact required format. ` +
+      `Do not reference other chunks.\n\n`;
+
+    const basePrompt = applyTemplate(template, { TRANSCRIPT: chunk, LANG: lang });
+    partials.push(await callLLM(chunkHeader + basePrompt));
+  }
+
+  const mergePrompt =
+    `You are given ${partials.length} partial summaries from chunks of a single team call transcript.\n` +
+    (omittedCount > 0
+      ? `Note: ${omittedCount} earlier chunk(s) were omitted due to LLM_MAX_CHUNKS. Focus on the provided chunks.\n`
+      : '') +
+    `Merge them into ONE final structured summary in ${lang}, using the SAME format as the partial summaries.\n` +
+    `Deduplicate repeated points, consolidate decisions/tasks, and keep owners/deadlines if present.\n\n` +
+    `PARTIAL SUMMARIES:\n\n` +
+    partials.map((p, idx) => `--- PART ${idx + 1}/${partials.length} ---\n${p}\n`).join('\n');
+
+  return callLLM(mergePrompt);
 }

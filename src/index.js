@@ -563,13 +563,21 @@ function channelIsEmpty(guild, voiceChannelId) {
   return channelHumansCount(guild, voiceChannelId) === 0;
 }
 
-function buildRawTranscript() {
+function buildRawTranscript({ maxChars } = {}) {
   const lines = active.transcripts
     .map((t) => `[${t.user}] ${t.text}`)
     .join('\n');
-  const max = 12000;
-  const trimmed = lines.length > max ? lines.slice(-max) : lines;
-  return trimmed || '(no speech captured)';
+
+  if (!lines) return '(no speech captured)';
+
+  if (Number.isFinite(maxChars) && maxChars > 0 && lines.length > maxChars) {
+    // Trim from the start for safety/cost control, but try not to start mid-line.
+    const sliceStart = lines.length - maxChars;
+    const nextNl = lines.indexOf('\n', sliceStart);
+    return (nextNl >= 0 ? lines.slice(nextNl + 1) : lines.slice(-maxChars));
+  }
+
+  return lines;
 }
 
 function summarizeToBullets(raw, { min = 5, max = 10 } = {}) {
@@ -663,10 +671,11 @@ async function finalizeAndSend(guild) {
   const endedAtIso = new Date().toISOString();
   const participants = [...new Set([...active.participants.values()])].join(', ') || '(none)';
 
+  // Full transcript for saving to disk.
   const raw = buildRawTranscript();
 
   // Bound transcript size passed to LLM (untrusted STT output; cost/DoS guard)
-  const rawForLLM = raw.length > MAX_TRANSCRIPT_CHARS_FOR_LLM ? raw.slice(-MAX_TRANSCRIPT_CHARS_FOR_LLM) : raw;
+  const rawForLLM = buildRawTranscript({ maxChars: MAX_TRANSCRIPT_CHARS_FOR_LLM });
 
   last.finalizeAt = new Date().toISOString();
 
