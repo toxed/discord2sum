@@ -744,12 +744,16 @@ async function finalizeAndSend(guild) {
         '4. Риски / Блокеры (если обсуждались)\nНет';
     }
 
+    // Telegram Markdown note: underscores in usernames (e.g., Artyom_Payments) are parsed as italics.
+    // Wrap variable header fields in inline code to keep them readable.
+    const safeInlineCode = (s) => String(s || '').replace(/`/g, "'");
+
     const msg =
       `Discord call summary\n` +
-      `Channel: ${channelName}\n` +
-      `Started: ${startedAt}\n` +
-      `Ended: ${endedAtIso}\n` +
-      `Participants: ${participants}\n\n` +
+      `Channel: \`${safeInlineCode(channelName)}\`\n` +
+      `Started: \`${safeInlineCode(startedAt)}\`\n` +
+      `Ended: \`${safeInlineCode(endedAtIso)}\`\n` +
+      `Participants: \`${safeInlineCode(participants)}\`\n\n` +
       `${summaryText}`;
 
     const webhookPayload = {

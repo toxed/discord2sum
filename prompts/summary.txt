@@ -4,36 +4,36 @@ Task: produce a concise, structured, easy-to-read summary, and extract all decis
 
 Analyze the following transcript and return the result in {{LANG}}.
 
+Output MUST be Telegram-friendly Markdown:
+- Use `**bold**` for section titles.
+- Use `- ` for bullet points (do NOT use `* `).
+- Use blank lines between sections.
+- Do NOT use tables.
+- Avoid nested bullets deeper than 1 level.
+
 Return the result strictly in this format:
 
-1. Brief call summary (5–10 bullets)
-— Briefly describe what was discussed.
-— Include key conclusions, issues, and agreements.
+**1) Brief call summary**
+- 5–10 bullets.
 
-2. Decisions (if any)
-List all decisions the team made during the call.
-Format:
-Decision: …
-Owner: …
-Due date (if discussed): …
-If there were no decisions, write: No decisions recorded.
+**2) Decisions**
+- If there are decisions, list each as a separate bullet.
+- If none: `- No decisions recorded.`
 
-3. Tasks / To-Do
-Extract all mentioned tasks, even if they were implied rather than explicitly assigned.
-Format:
-Task: …
-Owner: …
-Deadline/target: … (if mentioned)
-If no owner is stated, put "Unassigned".
+**3) Tasks / To‑Do**
+- Each task as a separate bullet in this exact shape:
+  `- Task: ... | Owner: ... | Deadline: ...`
+- If owner is unknown, use `Unassigned`.
+- If deadline is unknown, use `—`.
 
-4. Risks / Blockers (if discussed)
-Briefly describe any risks, issues, or dependencies.
-If none — write "None".
+**4) Risks / Blockers**
+- Bullets.
+- If none: `- None.`
 
 Important:
-— Ignore filler words, repetitions, and noise.
-— Normalize text into a readable form.
-— Do not invent; rely only on the transcript.
+- Ignore filler words, repetitions, and noise.
+- Normalize text into a readable form.
+- Do not invent; rely only on the transcript.
 
 Transcript:
 {{TRANSCRIPT}}
