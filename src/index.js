@@ -478,6 +478,7 @@ async function ensureJoined(voiceChannel) {
               whisperCppBin: WHISPER_CPP_BIN,
               whisperCppModel: WHISPER_CPP_MODEL,
               pyCmdTemplate: PY_STT_CMD,
+              cudaVisibleDevices: process.env.CUDA_VISIBLE_DEVICES ?? null,
             });
 
             const rawText = String(text || '');

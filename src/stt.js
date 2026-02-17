@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { parse as shellParse } from 'shell-quote';
 
-function run(cmd, args, { timeoutMs = 10 * 60_000 } = {}) {
+function run(cmd, args, { timeoutMs = 10 * 60_000, env = {} } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
     let out = '';
     let err = '';
 
@@ -95,14 +95,18 @@ function parsePyCmd(cmdline) {
     }
   }
 
-  return { cmd, args };
+  return { cmd, args, env: {} };
 }
 
-export async function transcribeFile({ filePath, whisperCppBin, whisperCppModel, pyCmdTemplate }) {
+export async function transcribeFile({ filePath, whisperCppBin, whisperCppModel, pyCmdTemplate, cudaVisibleDevices = null }) {
   if (pyCmdTemplate) {
     const { cmd, args } = parsePyCmd(pyCmdTemplate);
     const finalArgs = [...args, filePath];
-    const { stdout } = await run(cmd, finalArgs);
+    const extraEnv = {};
+    if (cudaVisibleDevices !== null && cudaVisibleDevices !== undefined && String(cudaVisibleDevices) !== '') {
+      extraEnv.CUDA_VISIBLE_DEVICES = String(cudaVisibleDevices);
+    }
+    const { stdout } = await run(cmd, finalArgs, { env: extraEnv });
     return stdout.trim();
   }
 
